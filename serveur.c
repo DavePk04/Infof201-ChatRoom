@@ -14,11 +14,9 @@
 // TODO: gerer les erreurs lors du parsing des arguments
 int main(int argc, char *argv[]) {
 
-    // variables pour le message
-    size_t longueur_du_message;
-    time_t timestamp;
-    char* message;
 
+
+    //parsing pour récupérer le port
     unsigned const long int port = (unsigned long int) (argv[0]);
     //TODO: fonction qui vérifie si le port entré est correcte --> https://wallu.pagesperso-orange.fr/pag-ports.htm max 65535
     int opt = 1;
@@ -30,6 +28,7 @@ int main(int argc, char *argv[]) {
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
+
     checked(bind(master_socket, (struct sockaddr *) &address, sizeof(address)));
     checked(listen(master_socket, 3));
 
