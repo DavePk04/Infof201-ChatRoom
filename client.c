@@ -18,13 +18,12 @@ int sockfd = 0;
 char pseudo[32];
 
 
-// struct message
-// {
-// 	size_t msg_lenght;
-// 	time_t timestamp;
-// 	timestamp = time(NULL);
-// 	char* message[32];
-// };
+struct buffer
+{
+	size_t msg_lenght;
+	time_t timestamp;
+	char message[LENGTH];
+};
 
 //oblige le système à vider le tampon associé au flux de sortie spécifié
 void str_overwrite_stdout() {
@@ -49,22 +48,24 @@ void catch_ctrl_c_and_exit(int sig) {
 
 void send_msg_handler() {
   char message[LENGTH] = {};
-	char buffer[LENGTH + 32] = {};
+	//char buffer[LENGTH + 32] = {};
 
   while(1) {
   	str_overwrite_stdout();       // Optionnel
     fgets(message, LENGTH, stdin);   // recupere le msg entered in stdin
     str_trim_lf(message, LENGTH);
 
+    struct buffer buf;
+    strcpy(buf.message, message);
     if (strcmp(message, "exit") == 0) {   // optionnel
 			break;
     } else {
-      sprintf(buffer, "%s: %s\n", pseudo, message);  // stocke le msg "%s: %s\n" dans buffer(le tampon)
-      send(sockfd, buffer, strlen(buffer), 0);
+      sprintf(buf.message, "%s: %s", pseudo, message);  // stocke le msg "%s: %s\n" dans buffer(le tampon)
+      send(sockfd, buf.message, strlen(buf.message), 0);
     }
 
 		bzero(message, LENGTH);
-    bzero(buffer, LENGTH + 32);
+    bzero(buf.message, LENGTH + 32);
   }
   catch_ctrl_c_and_exit(2);
 }
@@ -106,9 +107,9 @@ int main(int argc, char **argv){
     long int value_port = strtol(port_, NULL, 10);
     long int port=value_port;
 
-    printf("ip serveur : %s \n",ip_server);
-    printf("port : %ld \n",*&port);
-    printf("pseudo : %s \n",pseudo);              //TODO convertir en char*
+    // printf("ip serveur : %s \n",ip_server);
+    // printf("port : %ld \n",*&port);
+    // printf("pseudo : %s \n",pseudo);              //TODO convertir en char*
 
 	signal(SIGINT, catch_ctrl_c_and_exit);   //TODO signal CTRL+D
 
