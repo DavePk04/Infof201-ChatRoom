@@ -48,6 +48,7 @@ void catch_ctrl_c_and_exit(int sig) {
 
 void send_msg_handler() {
   char message[LENGTH] = {};
+  char send_msg[LENGTH + 32] = {};
 	//char buffer[LENGTH + 32] = {};
 
   while(1) {
@@ -57,11 +58,16 @@ void send_msg_handler() {
 
     struct buffer buf;
     strcpy(buf.message, message);
+    buf.msg_lenght = sizeof(buf.message);
+    buf.timestamp = time(NULL);
+    // printf("msg : %s", buf.message);
+    // printf("msg_lenght : %d", buf.msg_lenght);
+    // printf("msg : %ld", buf.timestamp);
     if (strcmp(message, "exit") == 0) {   // optionnel
 			break;
     } else {
-      sprintf(buf.message, "%s: %s", pseudo, message);  // stocke le msg "%s: %s\n" dans buffer(le tampon)
-      send(sockfd, buf.message, strlen(buf.message), 0);
+      sprintf(send_msg, "%s: %s %d %ld", pseudo, buf.message, buf.msg_lenght, buf.timestamp);  // stocke le msg "%s: %s\n" dans buffer(le tampon)
+      send(sockfd, send_msg, strlen(send_msg), 0);
     }
 
 		bzero(message, LENGTH);
