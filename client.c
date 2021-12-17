@@ -44,22 +44,18 @@ void str_trim_lf(char *arr, int length) {
 
 
 void recv_msg_handler() {
-    char *message = malloc(1024 + 1);
+    char message[LENGTH] = {};
     while (1) {
-        int receive = checked(recv(sockfd, (void*)message, 1024, 0));
+        int receive = checked(recv(sockfd, message, LENGTH, 0));
         if (receive > 0) {
             printf("%s\n", message);  // affiche le msg send by server
             str_overwrite_stdout();
-        } else if (receive == 0) {
-            printf("exit done");
-
-            break;
-        } else {
-            printf("exit done");
+        }  else {
+            printf("fermeture en cours...");
+            exit(0);
         }
 //        memset(message, 0, sizeof(message));  // optionnel
     }
-    free(message);
 }
 
 
@@ -116,10 +112,10 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    char *message = malloc(1024 + 1);
-    while (fgets(message, 1024 + 1, stdin)) {
-        char *send_msg = malloc(1024 + 1);
-        str_trim_lf(message, 1024 + 1);
+    char *message = malloc(LENGTH + 1);
+    while (fgets(message, LENGTH + 1, stdin)) {
+        char *send_msg = malloc(LENGTH + 1);
+        str_trim_lf(message, LENGTH + 1);
 
         struct buffer buf;
         buf.message = strdup(message);                  // à la place du strcpy on utilise strdup

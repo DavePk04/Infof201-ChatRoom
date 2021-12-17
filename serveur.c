@@ -6,7 +6,15 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include "common.h"
+
+
+void sigintHandler(int sig_num)
+{
+    printf("ctrl + c pressed, exiting...\n");
+    exit(0);
+}
 
 int main(int argc, char **argv) {
     int sockfd_server, sockfd_client;          // descripteurs de socket
@@ -42,6 +50,7 @@ int main(int argc, char **argv) {
     clients[0] = sockfd_server;    // on ajoute deja la socket d'ecoute au tableau de descripteurs
     taille++;       // et donc on augmente "taille"
 
+    signal(SIGINT, sigintHandler);
     while (1) {
         FD_ZERO(&readfds);                                        //il faut remettre tt les elements ds readfds a chaque recommencement de la boucle, vu que select modifie les ensembles
         int sockmax = 0;
@@ -66,20 +75,31 @@ int main(int argc, char **argv) {
           for (int i = 1; i < taille; i++) {                                     // on parcourt tous les autres descripteurs du tableau
             if (FD_ISSET(clients[i], &readfds)) {               // si une socket du tableau est dans readfds, alors qqch a ete envoye au serveur par un client
                 char *buf[1024];               // espace necessaire pour stocker le message recu
-                size_t nbytes = recv(clients[i], (void*)&buf, 1024, 0);
+                size_t nbytes = read(clients[i], (void*)&buf, 1024);
                 if (nbytes < 0) {
                     close(clients[i]);
                     clients[i] = clients[taille - 1];
                     taille--;                                       // on stocke alors le message
-                    //perror("Erreur lors de la reception -> ");
-                    //exit(4);
+                    perror("Erreur lors de la reception -> ");
+                    exit(4);
+                }
+                else if (nbytes == 0){
+                    getpeername(clients[i] , (struct sockaddr*)&addr_client , (socklen_t*)&addr_client);
+                    printf("Host disconnected , ip %s , port %d \n" , inet_ntoa(addr_client.sin_addr) , ntohs(addr_client.sin_port));
+                     
+                    //Close the socket and mark as 0 in list for reuse
+                    close( clients[i] );
+                    clients[i] = clients[taille - 1];
+                    taille--;
                 }
                 else{
                   //printf("%s\n", *buf);                                  // et on l'affiche
                   for (int k = 1; k < taille; k++) {                                                    // puis on l'envoie a tous les clients...
-                    if (send(clients[k], (void*)&buf, 1024, 0) < 0) {
+                    //if (k != i){     // ajout
+                      if (write(clients[k], (void*)&buf, 1024) < 0) {
                         perror("Erreur lors de l'appel a send -> ");
                         //exit(1);
+                    //}
                     }
                   }
                 }
