@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
         else{
           for (int i = 1; i < taille; i++) {                                     // on parcourt tous les autres descripteurs du tableau
             if (FD_ISSET(clients[i], &readfds)) {               // si une socket du tableau est dans readfds, alors qqch a ete envoye au serveur par un client
-                char *buf;               // espace necessaire pour stocker le message recu
+                char *buf[1024];               // espace necessaire pour stocker le message recu
                 size_t nbytes = recv(clients[i], (void*)&buf, 1024, 0);
                 if (nbytes < 0) {
                     close(clients[i]);
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
                     //exit(4);
                 }
                 else{
-                  //printf("%s\n", buf);                                  // et on l'affiche
+                  //printf("%s\n", *buf);                                  // et on l'affiche
                   for (int k = 1; k < taille; k++) {                                                    // puis on l'envoie a tous les clients...
                     if (send(clients[k], (void*)&buf, 1024, 0) < 0) {
                         perror("Erreur lors de l'appel a send -> ");
@@ -83,6 +83,7 @@ int main(int argc, char **argv) {
                     }
                   }
                 }
+                memset(buf, '\0', 1024);    // reinitialise le buffer
             }   
         }
         }
