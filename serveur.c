@@ -26,10 +26,12 @@
 #include <signal.h>   // SIGINT
 #include "common.h"
 
+#define BUFFERSIZE 1024
+
 /*identifiants d'un client connecté*/
 struct user {
     int socket;
-    char pseudo[1024];
+    char pseudo[BUFFERSIZE];
 };
 
 /*gestionnaire du signal envoyé par le serveur*/
@@ -80,7 +82,7 @@ int main(int argc, char **argv) {
     clients[0].socket = sockfd_server;
     strcpy(clients[0].pseudo, "server");
     nclients++;       
-    char buf_pseudo[1024];               
+    char buf_pseudo[BUFFERSIZE];               
 
     // ferme le serveur et provoque la fermeture de tous les clients
     signal(SIGINT, sigintHandler);
@@ -101,8 +103,8 @@ int main(int argc, char **argv) {
         if (FD_ISSET(sockfd_server, &readfds)) {  
             // Si c'est le master socket qui a des donnees, c'est une nouvelle connexion.                          
             sockfd_client = checked(accept(sockfd_server, (struct sockaddr *) &addr_client, &sin_size));
-            if (read(sockfd_client, &buf_pseudo, 1024)){
-                printf("Connexion etablie avec %s %d\n", buf_pseudo, sockfd_client);
+            if (read(sockfd_client, &buf_pseudo, BUFFERSIZE)){
+                printf("Connexion etablie avec %s fd : %d\n", buf_pseudo, sockfd_client);
             }
             nclients++;                                                                    
             clients[nclients - 1].socket = sockfd_client;
@@ -112,16 +114,16 @@ int main(int argc, char **argv) {
             // Sinon, c'est un message d'un client
           for (int i = 1; i < nclients; i++) {                                     
                 if (FD_ISSET(clients[i].socket, &readfds)) {               // si un socket du tableau est dans readfds, alors qqch a été envoyé au serveur par un client
-                    char *buf[1024];               
-                    size_t nbytes = read(clients[i].socket, (void*)&buf, 1024);
-                    if (nbytes > 0){       
+                    char *buf[BUFFERSIZE];               
+                    size_t nbytes = read(clients[i].socket, (void*)&buf, BUFFERSIZE);
+                    if (nbytes > 0){    
                         // envoie le message à tous les clients connectés 
                         for (int k = 1; k < nclients; k++) {                                                    
-                            if (write(clients[k].socket, (void*)&buf, 1024) < 0)
+                            if (write(clients[k].socket, (void*)&buf, BUFFERSIZE) < 0)
                                 perror("Erreur lors de l'appel a send -> ");
                         }
                     }else{       // en cas d'EOF sur le stdin
-                        printf("Host disconnected from %s %d\n" , clients[i].pseudo, clients[i].socket);
+                        printf("Host disconnected from %s fd : %d\n" , clients[i].pseudo, clients[i].socket);
                         char *name = clients[i].pseudo;    
                         close( clients[i].socket );
                         clients[i].socket = clients[nclients - 1].socket;
@@ -130,7 +132,7 @@ int main(int argc, char **argv) {
                         strcpy(clients[i].pseudo, clients[nclients - 1].pseudo);
                         nclients--;
                     }
-                    memset(buf, '\0', 1024);    // réinitialise le buffer
+                    memset(buf, '\0', BUFFERSIZE);    // réinitialise le buffer
                 }   
             }
         }
