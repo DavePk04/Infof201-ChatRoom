@@ -4,6 +4,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <ctype.h>
+
+int is_integer(char *arg){
+    for (int i = 0; i < strlen(arg); i++)
+    {
+        if (isdigit(arg[i]) == 0)
+              return 0;
+    }
+    return 1;
+}
 
 int _checked(int ret, char* calling_function) {
   if (ret < 0) {
@@ -28,7 +38,7 @@ int ssend(int sock, void* data, size_t len) {
 /**
  * @brief Receive data under the form <size_t len><data...>.
  */
-size_t receive(int sock, void** dest) {
+size_t sreceive(int sock, void** dest) {
   size_t nbytes_to_receive;
   if (checked(read(sock, &nbytes_to_receive, sizeof(nbytes_to_receive))) == 0) {
     // Connection closed

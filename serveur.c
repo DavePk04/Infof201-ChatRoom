@@ -1,111 +1,138 @@
-#include <sys/types.h>
+/*
+ * ==========================================================================================
+ *
+ *       Filename:  server.c
+ *
+ *    Description:  Code côté serveur qui gère plusieurs connexions socket avec select et 
+ *                  fd_set sur linux, gère la réception et l’envoie des messages 
+ *                  à tous les clients connectés.
+ *
+ *        Created:  19/12/2021 
+ *
+ *        Authors:  Secundar Ismael && Pikop Dave
+ *         Projet:  CHATROOM
+ *
+ * ==========================================================================================
+ */
+
+
+#include <netinet/in.h>
+#include <sys/times.h>  // FD_SET, FD_ISSET, FD_ZERO macros
 #include <sys/socket.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include <unistd.h>
-#include <signal.h>
+#include <string.h>   // strlen
+#include <unistd.h>   // close
+#include <signal.h>   // SIGINT
 #include "common.h"
 
+/*identifiants d'un client connecté*/
+struct user {
+    int socket;
+    char pseudo[1024];
+};
 
-void sigintHandler(int sig_num)
-{
-    printf("ctrl + c pressed, exiting...\n");
-    exit(0);
+/*gestionnaire du signal envoyé par le serveur*/
+void sigintHandler(int sig_received){
+    if (sig_received == SIGINT){
+		printf("    Fermeture du chat...\n");
+		exit(0);
+	}
+}
+
+/*vérifie le nombre de paramètres et leurs types*/
+void parse_args(int args_nber, char **args){
+    if (args_nber < 2){
+        printf("Usage: ./serveur <port>\n");
+        exit(-1);
+    }
+    else if (is_integer(args[1]) == 0){
+        printf("%s n'est pas un port\n", args[1]); 
+        exit(-1);  
+    }  
 }
 
 int main(int argc, char **argv) {
-    int sockfd_server, sockfd_client;          // descripteurs de socket
-    fd_set readfds;               // ensemble des descripteurs en lecture qui seront surveilles par select
-    int clients[FD_SETSIZE];            // tableau qui contiendra tous les descripteurs de sockets, avec une taille egale a la taille max de l'ensemble d'une structure fd_set
-    int taille = 0;                 // nombre de descripteurs dans le tableau precedent
-    int opt = 1;
+    parse_args(argc, argv);
 
-
-    struct sockaddr_in addr_server;   // structure d'adresse qui contiendra les param reseaux du recepteur
-    struct sockaddr_in addr_client;    // structure d'adresse qui contiendra les param reseaux de l'expediteur
+    /*setup server*/
+    int sockfd_server, sockfd_client, nclients = 0, opt = 1;          
+    fd_set readfds;               // ensemble des fds en lecture qui seront surveillés par select
+    struct sockaddr_in addr_server, addr_client;   // structure d'adresse qui contiendra les params reseaux du recepteur et de l'expediteur
 
     socklen_t sin_size = sizeof(struct sockaddr_in);
 
-    if (argc != 2) {
-        printf("Usage: %s port_local\n", argv[0]);
-        exit(-1);
-    }
-
-    sockfd_server = checked(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+    sockfd_server = checked(socket(AF_INET, SOCK_STREAM, 0));
     checked(setsockopt(sockfd_server, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)));
 
     addr_server.sin_family = AF_INET;
-    addr_server.sin_port = ntohs(atoi(argv[1]));
-    addr_server.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr_server.sin_port = htons(atoi(argv[1]));
+    addr_server.sin_addr.s_addr = INADDR_ANY;
 
     checked(bind(sockfd_server, (struct sockaddr *) &addr_server, sizeof(addr_server)));
     checked(listen(sockfd_server, 10));
 
+    struct user clients[FD_SETSIZE];          // table de tous les clients connectés de type user
 
-    printf("Attente de connexion\n");
+    printf("Attente de connexion...\n");
 
-    clients[0] = sockfd_server;    // on ajoute deja la socket d'ecoute au tableau de descripteurs
-    taille++;       // et donc on augmente "taille"
+    // ajoute le master socket dans la liste des clients
+    clients[0].socket = sockfd_server;
+    strcpy(clients[0].pseudo, "server");
+    nclients++;       
+    char buf_pseudo[1024];               
 
+    // ferme le serveur et provoque la fermeture de tous les clients
     signal(SIGINT, sigintHandler);
     while (1) {
-        FD_ZERO(&readfds);                                        //il faut remettre tt les elements ds readfds a chaque recommencement de la boucle, vu que select modifie les ensembles
-        int sockmax = 0;
-        for (int j = 0; j < taille; j++) {
-            if (clients[j] != 0)
-                FD_SET(clients[j], &readfds);  // on remet donc tous les elements dans readfds
-            if (sockmax < clients[j])                 // et on prend ici le "numero" de socket maximal pour la fonction select
-                sockmax = clients[j];
+        FD_ZERO(&readfds);                                        
+        int max_fd = 0;
+        for (int j = 0; j < nclients; j++) {
+            // add all sockets in fd_set
+            if (clients[j].socket != 0)    
+                FD_SET(clients[j].socket, &readfds);  
+            // getting max socket client for select
+            if (max_fd < clients[j].socket)                 
+                max_fd = clients[j].socket;
         }
 
-        checked(select(sockmax + 1, &readfds, NULL, NULL, NULL));
-
-
-        if (FD_ISSET(sockfd_server, &readfds)) {                            // si la socket d'ecoute est dans readfds, alors qqch lui a ete envoye (=connection d'un client)
+        /*wait for an activity on one of the sockets, timeout is NULL*/
+        checked(select(max_fd + 1, &readfds, NULL, NULL, NULL));
+        if (FD_ISSET(sockfd_server, &readfds)) {  
+            // Si c'est le master socket qui a des donnees, c'est une nouvelle connexion.                          
             sockfd_client = checked(accept(sockfd_server, (struct sockaddr *) &addr_client, &sin_size));
-            printf("Connexion etablie avec %s\n", inet_ntoa(addr_client.sin_addr));
-            taille++;                                                                     // ...qui est donc ajoutee au tableau de descripteurs
-            clients[taille - 1] = sockfd_client;
+            if (read(sockfd_client, &buf_pseudo, 1024)){
+                printf("Connexion etablie avec %s %d\n", buf_pseudo, sockfd_client);
+            }
+            nclients++;                                                                    
+            clients[nclients - 1].socket = sockfd_client;
+            strcpy(clients[nclients - 1].pseudo, buf_pseudo);
         }
-
         else{
-          for (int i = 1; i < taille; i++) {                                     // on parcourt tous les autres descripteurs du tableau
-            if (FD_ISSET(clients[i], &readfds)) {               // si une socket du tableau est dans readfds, alors qqch a ete envoye au serveur par un client
-                char *buf[1024];               // espace necessaire pour stocker le message recu
-                size_t nbytes = read(clients[i], (void*)&buf, 1024);
-                if (nbytes < 0) {
-                    close(clients[i]);
-                    clients[i] = clients[taille - 1];
-                    taille--;                                       // on stocke alors le message
-                    perror("Erreur lors de la reception -> ");
-                    exit(4);
-                }
-                else if (nbytes == 0){
-                    getpeername(clients[i] , (struct sockaddr*)&addr_client , (socklen_t*)&addr_client);
-                    printf("Host disconnected , ip %s , port %d \n" , inet_ntoa(addr_client.sin_addr) , ntohs(addr_client.sin_port));
-                     
-                    //Close the socket and mark as 0 in list for reuse
-                    close( clients[i] );
-                    clients[i] = clients[taille - 1];
-                    taille--;
-                }
-                else{
-                  //printf("%s\n", *buf);                                  // et on l'affiche
-                  for (int k = 1; k < taille; k++) {                                                    // puis on l'envoie a tous les clients...
-                    //if (k != i){     // ajout
-                      if (write(clients[k], (void*)&buf, 1024) < 0) {
-                        perror("Erreur lors de l'appel a send -> ");
-                        //exit(1);
-                    //}
+            // Sinon, c'est un message d'un client
+          for (int i = 1; i < nclients; i++) {                                     
+                if (FD_ISSET(clients[i].socket, &readfds)) {               // si un socket du tableau est dans readfds, alors qqch a été envoyé au serveur par un client
+                    char *buf[1024];               
+                    size_t nbytes = read(clients[i].socket, (void*)&buf, 1024);
+                    if (nbytes > 0){       
+                        // envoie le message à tous les clients connectés 
+                        for (int k = 1; k < nclients; k++) {                                                    
+                            if (write(clients[k].socket, (void*)&buf, 1024) < 0)
+                                perror("Erreur lors de l'appel a send -> ");
+                        }
+                    }else{       // en cas d'EOF sur le stdin
+                        printf("Host disconnected from %s %d\n" , clients[i].pseudo, clients[i].socket);
+                        char *name = clients[i].pseudo;    
+                        close( clients[i].socket );
+                        clients[i].socket = clients[nclients - 1].socket;
+                        // On deplace le dernier socket a la place de libre pour ne pas faire de trou.
+                        strcpy(clients[i].pseudo, clients[nclients - 1].pseudo);
+                        strcpy(clients[i].pseudo, clients[nclients - 1].pseudo);
+                        nclients--;
                     }
-                  }
-                }
-                memset(buf, '\0', 1024);    // reinitialise le buffer
-            }   
-        }
+                    memset(buf, '\0', 1024);    // réinitialise le buffer
+                }   
+            }
         }
     }
 }

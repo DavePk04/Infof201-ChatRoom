@@ -1,22 +1,47 @@
+/*
+ * ==========================================================================================
+ *
+ *       Filename:  client.c
+ *
+ *    Description:  Code côté client qui gère l'envoie et la réception des messages via 
+ *                  le serveur en utilisant les threads noyaux.
+ *
+ *        Created:  19/12/2021 
+ *
+ *        Authors:  Secundar Ismael && Pikop Dave
+ *         Projet:  CHATROOM
+ *
+ * ==========================================================================================
+ */
+
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <time.h>
-#include "common.h" //include le common.h
+#include "common.h" 
 
-#define LENGTH 2048
+#define BUFFERSIZE 1024
 
-// Global variables
 int sockfd = 0;
 char pseudo[32];
 
+
+void parse_args(int args_nber, char **args){
+    if (args_nber < 4){
+        printf("Usage: ./client <pseudo> <ip_serveur> <port>\n");
+        exit(-1);
+    }
+    else if (is_integer(args[3]) == 0){
+        printf("%s n'est pas un port\n", args[3]); 
+        exit(-1);  
+    }  
+}
 
 struct buffer {
     size_t msg_lenght;
@@ -24,106 +49,101 @@ struct buffer {
     char *message;
 };
 
-//oblige le système à vider le tampon associé au flux de sortie spécifié
-void str_overwrite_stdout() {
+void start_of_msg_char() {
     printf("%s", "> ");
-    fflush(stdout);
+    fflush(stdout);    //oblige le système à vider le tampon associé au flux de sortie spécifié
 }
 
-// remplace le retour a la ligne par le caractere de fin de ligne
-void str_trim_lf(char *arr, int length) {
+/*remplace le retour à la ligne par le caractere de fin de ligne*/
+void clean_up_msg(char *str, int str_size) {
     int i;
-    for (i = 0; i < length; i++) { // trim \n
-        if (arr[i] == '\n') {
-            arr[i] = '\0';
+    for (i = 0; i < str_size; i++) { 
+        if (str[i] == '\n') {
+            str[i] = '\0';
             break;
         }
     }
 }
 
 
-
+/*print message sent by server*/
 void recv_msg_handler() {
-    char message[LENGTH] = {};
+    char message[BUFFERSIZE] = {};
     while (1) {
-        int receive = checked(recv(sockfd, message, LENGTH, 0));
+        start_of_msg_char();
+        int receive = checked(recv(sockfd, message, BUFFERSIZE, 0));
         if (receive > 0) {
-            printf("%s\n", message);  // affiche le msg send by server
-            str_overwrite_stdout();
-        }  else {
-            printf("fermeture en cours...");
+            printf("%s\n", message);  
+        }  else {                             // cas où le client reçoit un signal d'arrêt du serveur
+            printf("fermeture en cours...\n");
             exit(0);
         }
-//        memset(message, 0, sizeof(message));  // optionnel
     }
 }
 
 
 int main(int argc, char **argv) {
-    if (argc != 4) {
-        printf("Usage: %s <port>\n", argv[0]);
-        return EXIT_FAILURE;
-    }
+    // parsing des arguments
+    parse_args(argc, argv);
+    strcpy(pseudo, argv[1]);  
 
-    // parsing des arguments et récupération
-    strcpy(pseudo, argv[1]);                // on récupère le pseudo des paramètres et on le mets dans pseudo
-
-    int size_of_ip_server = strlen(argv[2]); // on récupère la taille de l'ip du serveur
-    char ip_server[size_of_ip_server];         // on initialise la taille d'un string pour l'ip serveur
+    char ip_server[strlen(argv[2])];         
     strcpy(ip_server, argv[2]);
 
-    int size_of_port_ = strlen(argv[3]); // on récupère la taille du port
-    char port_[size_of_port_];            // on initialise la taille d'un string pour le port
+    char port_[strlen(argv[3])];            
     strcpy(port_, argv[3]);
 
+    long int port = strtol(port_, NULL, 10);    // convertit le port en long int
 
-    long int value_port = strtol(port_, NULL, 10);
-    long int port = value_port;
-
-    str_trim_lf(pseudo, strlen(pseudo));
-
-
-    printf("welcome : %s\n", pseudo);
-
-    struct sockaddr_in server_addr;
+    clean_up_msg(pseudo, strlen(pseudo));
 
     /* Socket settings */
+    struct sockaddr_in server_addr;
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(ip_server);
     server_addr.sin_port = htons(port);
 
-
-    // Connect to Server
-    int err = connect(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr));
-    if (err == -1) {
+    if (connect(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == -1) {
         printf("ERROR: connect\n");
         return EXIT_FAILURE;
     }
 
-    // Send name
-    send(sockfd, pseudo, 32, 0);   // send pseudo to server
+    checked(send(sockfd, pseudo, 32, 0));   // send pseudo to server
 
-    printf("=== WELCOME TO THE CHATROOM ===\n");   // optionnel
+    printf("<<<< WELCOME %s ON CHATROOM >>>>\n", pseudo);   
 
+    /* message reception handler */
     pthread_t recv_msg_thread;
     if (pthread_create(&recv_msg_thread, NULL, (void *) recv_msg_handler, NULL) != 0) {
         printf("ERROR: pthread\n");
         return EXIT_FAILURE;
     }
 
-    char *message = malloc(LENGTH + 1);
-    while (fgets(message, LENGTH + 1, stdin)) {
-        char *send_msg = malloc(LENGTH + 1);
-        str_trim_lf(message, LENGTH + 1);
+    /* message sending handler */
+    char *message = malloc(BUFFERSIZE + 1);
+    while (fgets(message, BUFFERSIZE + 1, stdin)) {
+        char *send_msg = malloc(BUFFERSIZE + 1);
+        clean_up_msg(message, BUFFERSIZE + 1);
 
+        // construction of message to send
         struct buffer buf;
-        buf.message = strdup(message);                  // à la place du strcpy on utilise strdup
-        buf.msg_lenght = strlen(buf.message);           // on récupère la taille du message
+        buf.message = strdup(message);               // duplique le char pointer pour eviter une segmentation default
+        buf.msg_lenght = strlen(buf.message);           
         buf.timestamp = time(NULL);
         
-        sprintf(send_msg, "%s: %ld %ld %s", pseudo, buf.msg_lenght, buf.timestamp,buf.message);  // stocke le msg "%s: %s\n" dans buffer(le tampon)
+        // conversion timestamp au format HHMMSS ou heures:minutes:secondes
+        struct tm *tmp;
+        char timestamp_converted[BUFFERSIZE];
+        time( &buf.timestamp );
+        tmp = localtime( &buf.timestamp );
+        strftime(timestamp_converted,BUFFERSIZE,"%X", tmp);
+
+        // send message to server
+        sprintf(send_msg, "%s: %ld %s %s", pseudo, buf.msg_lenght, timestamp_converted, buf.message);  // stocke le msg "%s: %s\n" dans buffer(le tampon)
         checked(send(sockfd, send_msg, strlen(send_msg), 0));
+
+        free(buf.message);
         free(send_msg);
     }
     free(message);
